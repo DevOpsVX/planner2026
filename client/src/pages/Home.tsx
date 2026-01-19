@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Calendar, ChevronDown, ChevronUp, Clock, Edit2, Save, X } from "lucide-react";
+import { Calendar, ChevronDown, ChevronUp, Clock, Edit2, Save, X, FileText, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { clients, Campaign, Script } from "@/data/clients";
@@ -18,6 +18,13 @@ export default function Home() {
   const [expandedCampaign, setExpandedCampaign] = useState<string | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<string | null>(null);
   const [editedCampaigns, setEditedCampaigns] = useState<Record<string, Campaign>>({});
+  
+  // Estado para o modal de roteiros
+  const [scriptModalOpen, setScriptModalOpen] = useState(false);
+  const [selectedScripts, setSelectedScripts] = useState<Script[]>([]);
+  const [selectedCampaignTitle, setSelectedCampaignTitle] = useState("");
+  const [isEditingScripts, setIsEditingScripts] = useState(false);
+  const [editedScripts, setEditedScripts] = useState<Script[]>([]);
 
   const currentClient = clients.find((c) => c.id === selectedClient);
 
@@ -45,15 +52,89 @@ export default function Home() {
     });
   };
 
+  // Abrir modal de roteiros
+  const openScriptModal = (scripts: Script[], campaignTitle: string) => {
+    setSelectedScripts(scripts);
+    setEditedScripts([...scripts]);
+    setSelectedCampaignTitle(campaignTitle);
+    setScriptModalOpen(true);
+    setIsEditingScripts(false);
+  };
+
+  // Fechar modal de roteiros
+  const closeScriptModal = () => {
+    setScriptModalOpen(false);
+    setSelectedScripts([]);
+    setEditedScripts([]);
+    setSelectedCampaignTitle("");
+    setIsEditingScripts(false);
+  };
+
+  // Atualizar roteiro em edição
+  const updateScript = (index: number, field: "title" | "content", value: string) => {
+    const updated = [...editedScripts];
+    updated[index] = { ...updated[index], [field]: value };
+    setEditedScripts(updated);
+  };
+
+  // Salvar roteiros editados
+  const saveScripts = () => {
+    setSelectedScripts([...editedScripts]);
+    setIsEditingScripts(false);
+    console.log("Roteiros salvos:", editedScripts);
+  };
+
+  // Exportar roteiros para PDF
+  const exportScriptsToPDF = async () => {
+    const scriptsToExport = isEditingScripts ? editedScripts : selectedScripts;
+    let markdown = `# ${currentClient?.name || "Cliente"}\n\n## ${selectedCampaignTitle}\n\n`;
+    
+    scriptsToExport.forEach((script) => {
+      markdown += `### ${script.title}\n\n${script.content}\n\n---\n\n`;
+    });
+
+    try {
+      const response = await fetch("/api/export-pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          markdown,
+          filename: `${currentClient?.name}_${selectedCampaignTitle}_Roteiros`.replace(/[^a-zA-Z0-9_-]/g, "_"),
+        }),
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${currentClient?.name}_${selectedCampaignTitle}_Roteiros.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        alert("Erro ao exportar PDF. Tente novamente.");
+      }
+    } catch (error) {
+      console.error("Erro ao exportar PDF:", error);
+      alert("Erro ao exportar PDF. Verifique sua conexão.");
+    }
+  };
+
   const calculateSendDate = (campaign: Campaign) => {
-    const campaignDate = new Date(campaign.date);
+    // Adiciona T12:00:00 para evitar problemas de timezone
+    const campaignDate = new Date(campaign.date + "T12:00:00");
     const sendDate = new Date(campaignDate);
     sendDate.setDate(sendDate.getDate() - campaign.sendBefore);
     return sendDate.toLocaleDateString("pt-BR");
   };
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    // Adiciona T12:00:00 para evitar problemas de timezone
+    const date = new Date(dateString + "T12:00:00");
     return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   };
 
@@ -253,39 +334,67 @@ export default function Home() {
                                 <p className="text-white">{campaign.description}</p>
                               </div>
 
-                              <div>
-                                <p className="text-sm text-muted-foreground mb-2">Ofertas Sugeridas</p>
-                                <ul className="space-y-2">
-                                  {campaign.offers.map((offer, idx) => (
-                                    <li
-                                      key={idx}
-                                      className="flex items-start gap-2 text-sm text-white bg-background/50 rounded p-2"
-                                    >
-                                      <span className="text-accent font-bold mt-0.5">•</span>
-                                      <span>{offer}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-
-                              <div>
-                                <p className="text-sm text-muted-foreground mb-3">Roteiros de Conteúdo</p>
-                                <div className="space-y-3">
-                                  {campaign.scripts.map((script) => (
-                                    <div
-                                      key={script.id}
-                                      className="bg-background/50 rounded-lg p-3 border border-border/50"
-                                    >
-                                      <h5 className="font-semibold text-white text-sm mb-2">
-                                        {script.title}
-                                      </h5>
-                                      <p className="text-xs text-muted-foreground leading-relaxed">
-                                        {script.content}
-                                      </p>
-                                    </div>
-                                  ))}
+                              {campaign.offers.length > 0 && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground mb-2">Ofertas Sugeridas</p>
+                                  <ul className="space-y-2">
+                                    {campaign.offers.map((offer, idx) => (
+                                      <li
+                                        key={idx}
+                                        className="flex items-start gap-2 text-sm text-white bg-background/50 rounded p-2"
+                                      >
+                                        <span className="text-accent font-bold mt-0.5">•</span>
+                                        <span>{offer}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
                                 </div>
-                              </div>
+                              )}
+
+                              {campaign.scripts.length > 0 && (
+                                <div>
+                                  <p className="text-sm text-muted-foreground mb-3">Roteiros de Conteúdo</p>
+                                  <div className="space-y-3">
+                                    {campaign.scripts.slice(0, 2).map((script) => (
+                                      <div
+                                        key={script.id}
+                                        onClick={() => openScriptModal(campaign.scripts, campaign.title)}
+                                        className="bg-background/50 rounded-lg p-3 border border-border/50 cursor-pointer hover:border-accent/50 transition-colors"
+                                      >
+                                        <h5 className="font-semibold text-white text-sm mb-2">
+                                          {script.title}
+                                        </h5>
+                                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                                          {script.content}
+                                        </p>
+                                      </div>
+                                    ))}
+                                    {campaign.scripts.length > 2 && (
+                                      <p className="text-xs text-muted-foreground text-center">
+                                        + {campaign.scripts.length - 2} roteiros
+                                      </p>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Botão Ver Roteiros Completos */}
+                                  <Button
+                                    onClick={() => openScriptModal(campaign.scripts, campaign.title)}
+                                    variant="outline"
+                                    className="w-full mt-3 border-accent/50 text-accent hover:bg-accent/10"
+                                  >
+                                    <FileText className="w-4 h-4 mr-2" />
+                                    Ver Roteiros Completos
+                                  </Button>
+                                </div>
+                              )}
+
+                              {campaign.scripts.length === 0 && (
+                                <div className="bg-background/30 rounded-lg p-4 border border-dashed border-border text-center">
+                                  <FileText className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                                  <p className="text-sm text-muted-foreground">Nenhum roteiro cadastrado</p>
+                                  <p className="text-xs text-muted-foreground mt-1">Clique em "Editar Campanha" para adicionar</p>
+                                </div>
+                              )}
 
                               <div className="pt-4 border-t border-border">
                                 <Button
@@ -333,6 +442,95 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {/* Modal de Roteiros */}
+      {scriptModalOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
+            {/* Header do Modal */}
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <div>
+                <h2 className="text-2xl font-bold text-white">{selectedCampaignTitle}</h2>
+                <p className="text-sm text-muted-foreground">{currentClient?.name}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={exportScriptsToPDF}
+                  className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Baixar PDF
+                </button>
+                {isEditingScripts ? (
+                  <button
+                    onClick={saveScripts}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    Salvar
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setIsEditingScripts(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    Editar
+                  </button>
+                )}
+                <button
+                  onClick={closeScriptModal}
+                  className="p-2 hover:bg-accent/10 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-muted-foreground" />
+                </button>
+              </div>
+            </div>
+
+            {/* Conteúdo do Modal */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {(isEditingScripts ? editedScripts : selectedScripts).map((script, index) => (
+                <div key={script.id || index} className="space-y-3">
+                  {isEditingScripts ? (
+                    <>
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">
+                          Título do Roteiro
+                        </label>
+                        <input
+                          type="text"
+                          value={script.title}
+                          onChange={(e) => updateScript(index, "title", e.target.value)}
+                          className="w-full mt-1 px-4 py-2 bg-background border border-border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-accent"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">
+                          Conteúdo do Roteiro
+                        </label>
+                        <textarea
+                          value={script.content}
+                          onChange={(e) => updateScript(index, "content", e.target.value)}
+                          rows={6}
+                          className="w-full mt-1 px-4 py-2 bg-background border border-border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-accent resize-none"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="bg-background/50 rounded-lg p-4 border border-border/50">
+                      <h3 className="text-lg font-semibold text-white mb-3">{script.title}</h3>
+                      <p className="text-muted-foreground whitespace-pre-wrap leading-relaxed">{script.content}</p>
+                    </div>
+                  )}
+                  {index < (isEditingScripts ? editedScripts : selectedScripts).length - 1 && (
+                    <div className="border-t border-border mt-4" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <footer className="border-t border-border bg-card/50 mt-12 py-6">

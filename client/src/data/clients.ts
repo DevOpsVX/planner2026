@@ -996,7 +996,7 @@ export const clients: Client[] = [
         ]
       }
     ]
-  }
+  },
   {
     id: "appeal",
     name: "Appeal Móveis",

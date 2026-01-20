@@ -67,10 +67,7 @@ export default function Home() {
               <h1 className="text-4xl font-bold text-white">Planner 2026</h1>
               <p className="text-muted-foreground mt-1">Hub de Planejamento para Clientes</p>
             </div>
-            <div className="text-right">
-              <p className="text-sm text-muted-foreground">Tema Dark Premium</p>
-              <p className="text-xs text-muted-foreground mt-1">Acentos em Vermelho</p>
-            </div>
+
           </div>
         </div>
       </header>

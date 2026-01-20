@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Calendar, ChevronDown, ChevronUp, Clock, Edit2, Save, X, FileText, Download, ArrowLeft, ArrowRight } from "lucide-react";
+import { jsPDF } from "jspdf";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { clients, Campaign, Script } from "@/data/clients";
@@ -108,44 +109,95 @@ export default function Home() {
     }
   };
 
-  // Exportar roteiro para PDF
-  const exportScriptToPDF = async () => {
+  // Exportar roteiro para PDF (client-side com jsPDF)
+  const exportScriptToPDF = () => {
     const scriptToExport = isEditingScript ? editedScript : selectedScript;
     if (!scriptToExport) return;
 
-    let markdown = `# ${currentClient?.name || "Cliente"}\n\n`;
-    markdown += `## ${selectedCampaignTitle}\n\n`;
-    markdown += `### ${scriptToExport.title}\n\n`;
-    markdown += scriptToExport.content;
-
     try {
-      const response = await fetch("/api/export-pdf", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          markdown,
-          filename: `${currentClient?.name}_${scriptToExport.title}`.replace(/[^a-zA-Z0-9_-]/g, "_"),
-        }),
-      });
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 20;
+      const maxWidth = pageWidth - margin * 2;
+      let yPosition = margin;
 
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${currentClient?.name}_${scriptToExport.title}.pdf`.replace(/[^a-zA-Z0-9_.-]/g, "_");
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      } else {
-        alert("Erro ao exportar PDF. Tente novamente.");
+      // Título do cliente
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text(currentClient?.name || "Cliente", margin, yPosition);
+      yPosition += 10;
+
+      // Título da campanha
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "normal");
+      doc.text(selectedCampaignTitle, margin, yPosition);
+      yPosition += 15;
+
+      // Linha separadora
+      doc.setDrawColor(200, 200, 200);
+      doc.line(margin, yPosition, pageWidth - margin, yPosition);
+      yPosition += 10;
+
+      // Título do roteiro
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "bold");
+      const titleLines = doc.splitTextToSize(scriptToExport.title, maxWidth);
+      doc.text(titleLines, margin, yPosition);
+      yPosition += titleLines.length * 7 + 10;
+
+      // Conteúdo do roteiro
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      
+      const contentLines = scriptToExport.content.split("\n");
+      
+      for (const line of contentLines) {
+        // Verificar se é um cabeçalho de cena
+        if (line.startsWith("[CENA") || line.startsWith("Formato:") || line.startsWith("Apresentador:") || line.startsWith("Objetivo:")) {
+          doc.setFont("helvetica", "bold");
+        } else if (line.startsWith("NARRADOR:") || line.startsWith("APRESENTADOR:")) {
+          doc.setFont("helvetica", "bolditalic");
+        } else {
+          doc.setFont("helvetica", "normal");
+        }
+
+        const wrappedLines = doc.splitTextToSize(line, maxWidth);
+        
+        for (const wrappedLine of wrappedLines) {
+          // Verificar se precisa de nova página
+          if (yPosition > pageHeight - margin) {
+            doc.addPage();
+            yPosition = margin;
+          }
+          
+          doc.text(wrappedLine, margin, yPosition);
+          yPosition += 6;
+        }
+        
+        // Espaço extra após linhas vazias
+        if (line === "") {
+          yPosition += 3;
+        }
       }
+
+      // Rodapé
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(150, 150, 150);
+        doc.text(`Página ${i} de ${totalPages} - Planner 2026`, pageWidth / 2, pageHeight - 10, { align: "center" });
+        doc.setTextColor(0, 0, 0);
+      }
+
+      // Salvar o PDF
+      const filename = `${currentClient?.name}_${scriptToExport.title}`.replace(/[^a-zA-Z0-9_-]/g, "_") + ".pdf";
+      doc.save(filename);
     } catch (error) {
       console.error("Erro ao exportar PDF:", error);
-      alert("Erro ao exportar PDF. Verifique sua conexão.");
+      alert("Erro ao exportar PDF. Tente novamente.");
     }
   };
 

@@ -2,19 +2,24 @@ import express from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import { connectMongo } from "./db";
+import { connectMongo } from "./db.js";
+import { registerApi } from "./api.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
-  const server = createServer(app);
+  createServer(app);
 
-  // Conectar ao MongoDB
-  connectMongo();
+  app.use(express.json({ limit: "2mb" }));
 
-  // Serve static files from dist/public in production
+  // Conectar ao MongoDB (aguardar!)
+  await connectMongo();
+
+  // API antes do SPA fallback
+  registerApi(app);
+
   const staticPath =
     process.env.NODE_ENV === "production"
       ? path.resolve(__dirname, "public")
@@ -22,16 +27,12 @@ async function startServer() {
 
   app.use(express.static(staticPath));
 
-  // Handle client-side routing - serve index.html for all routes
   app.get("*", (_req, res) => {
     res.sendFile(path.join(staticPath, "index.html"));
   });
 
   const port = process.env.PORT || 3000;
-
-  app.listen(port, () => {
-    console.log("Server running on port", port);
-  });
+  app.listen(port, () => console.log("Server running on port", port));
 }
 
 startServer().catch(console.error);
